@@ -28,6 +28,7 @@ public class ClusterResource {
     private ZooKeeper zk;
 
     public ClusterResource(ZooKeeper zk) {
+        assert zk != null;
         this.zk = zk;
     }
 

@@ -17,6 +17,7 @@ import io.dropwizard.setup.Environment;
 
 import java.io.IOException;
 import java.security.Security;
+import java.util.concurrent.CountDownLatch;
 
 import org.apache.zookeeper.ZooKeeper;
 import org.conscrypt.OpenSSLProvider;
@@ -25,12 +26,15 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
     static {
         Security.insertProviderAt(new OpenSSLProvider(), 1);
     }
+    private static DataKeeperClusterInfo clusterInfo;
     private static ZooKeeper zk;
+    final static CountDownLatch appStarted = new CountDownLatch(1);
 
     public static void main(final String[] args) throws Exception {
-        DataKeeperClusterInfo clusterInfo = new DataKeeperClusterInfo("node1", "localhost", 2181);
-        zk = new ZooKeeperConnection().connect("localhost", 2181, 10000);
         new DataKeeperApplication().run(args);
+
+        appStarted.await();
+
         new ZooKeeperClusterExecutor(zk, clusterInfo).run();
     }
 
@@ -47,7 +51,19 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
     }
 
     @Override
-    public void run(final DataKeeperConfiguration configuration, final Environment environment) throws IOException {
+    public void run(final DataKeeperConfiguration appConfig, final Environment environment) throws IOException,
+            InterruptedException {
+        clusterInfo = new DataKeeperClusterInfo(
+            appConfig.getNodeName(),
+            appConfig.getZooKeeperAddress(), 
+            appConfig.getZooKeeperPort()
+        );
+        zk = new ZooKeeperConnection().connect(
+            appConfig.getZooKeeperAddress(), 
+            appConfig.getZooKeeperPort(), 
+            appConfig.getZooKeeperTimeout()
+        );
+
         final DatabaseRepository kvs = new DatabaseRepository();
         final DatabaseResource dbResource = new DatabaseResource(kvs);
         final ClusterResource clusterResource = new ClusterResource(zk);
@@ -56,6 +72,7 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
         environment.jersey().register(dbResource);
         environment.jersey().register(clusterResource);
         environment.jersey().register(nodeResource);
+        appStarted.countDown();
     }
 
 }
