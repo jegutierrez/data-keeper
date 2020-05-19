@@ -1,7 +1,6 @@
 package io.jegutierrez.resources;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,15 +20,19 @@ import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.jegutierrez.core.DataKeeperClusterInfo;
+
 @Path("/cluster")
 @Produces(MediaType.APPLICATION_JSON)
 public class ClusterResource {
     private static final Logger log = LoggerFactory.getLogger(ClusterResource.class);
     private ZooKeeper zk;
+    private DataKeeperClusterInfo clusterInfo;
 
-    public ClusterResource(ZooKeeper zk) {
+    public ClusterResource(ZooKeeper zk, DataKeeperClusterInfo clusterInfo) {
         assert zk != null;
         this.zk = zk;
+        this.clusterInfo = clusterInfo;
     }
 
     @GET
@@ -58,6 +61,17 @@ public class ClusterResource {
             throw new WebApplicationException("could not get live nodes", Status.INTERNAL_SERVER_ERROR); 
         }
         return Response.status(Status.OK).entity(status).build();
+    }
+
+    @GET
+    @Timed
+    @Path("/leader")
+    public Response getClusterLeader() {
+        if(clusterInfo.getLeaderHostName() == null) {
+            log.error("could find an elected leader");
+            throw new WebApplicationException("could find an elected leader", Status.NOT_FOUND); 
+        }
+        return Response.status(Status.OK).entity(clusterInfo.getLeaderMapData()).build();
     }
 
 }

@@ -12,6 +12,9 @@ import io.dropwizard.Application;
 import io.dropwizard.configuration.ConfigurationSourceProvider;
 import io.dropwizard.configuration.EnvironmentVariableSubstitutor;
 import io.dropwizard.configuration.SubstitutingSourceProvider;
+import io.dropwizard.jetty.HttpConnectorFactory;
+import io.dropwizard.server.DefaultServerFactory;
+import io.dropwizard.server.SimpleServerFactory;
 import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
 
@@ -53,8 +56,18 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
     @Override
     public void run(final DataKeeperConfiguration appConfig, final Environment environment) throws IOException,
             InterruptedException {
+
+        
+        final HttpConnectorFactory applicationConnector = ((HttpConnectorFactory)
+                ((DefaultServerFactory) appConfig.getServerFactory()).getApplicationConnectors().get(0));
+
+        String host = applicationConnector.getBindHost();
+        int port = applicationConnector.getPort();
+
         clusterInfo = new DataKeeperClusterInfo(
             appConfig.getNodeName(),
+            host,
+            port,
             appConfig.getZooKeeperAddress(), 
             appConfig.getZooKeeperPort()
         );
@@ -66,7 +79,7 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
 
         final DatabaseRepository kvs = new DatabaseRepository();
         final DatabaseResource dbResource = new DatabaseResource(kvs);
-        final ClusterResource clusterResource = new ClusterResource(zk);
+        final ClusterResource clusterResource = new ClusterResource(zk, clusterInfo);
         final NodeResource nodeResource = new NodeResource();
 
         environment.jersey().register(dbResource);

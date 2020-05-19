@@ -7,7 +7,7 @@ logging:
 nodeName: node1.io
 zooKeeperAddress: localhost
 zooKeeperPort: 2181
-zooKeeperTimeout: 10000
+zooKeeperTimeout: 5000
 
 # server config
 server:
