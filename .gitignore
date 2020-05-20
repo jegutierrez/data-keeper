@@ -1,0 +1,24 @@
+  
+# Maven
+target/
+dependency-reduced-pom.xml
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+release.properties
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+nb-configuration.xml
+atlassian-ide-plugin.xml
+
+logs
+
+.DS_Store
