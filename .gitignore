@@ -16,9 +16,7 @@ release.properties
 .classpath
 .project
 
-nb-configuration.xml
-atlassian-ide-plugin.xml
-
 logs
+bin/
 
 .DS_Store
