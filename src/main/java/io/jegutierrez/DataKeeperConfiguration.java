@@ -1,9 +1,12 @@
 package io.jegutierrez;
 
 import io.dropwizard.Configuration;
+import io.dropwizard.client.HttpClientConfiguration;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.validation.constraints.NotNull;
+import javax.validation.Valid;
 import javax.validation.constraints.NotEmpty;
 
 public class DataKeeperConfiguration extends Configuration {
@@ -57,5 +60,19 @@ public class DataKeeperConfiguration extends Configuration {
     @JsonProperty
     public void setZooKeeperTimeout(Integer zooKeeperTimeout) {
         this.zooKeeperTimeout = zooKeeperTimeout;
+    }
+
+    @Valid
+    @NotNull
+    private HttpClientConfiguration httpClient = new HttpClientConfiguration();
+
+    @JsonProperty("httpClient")
+    public HttpClientConfiguration getHttpClientConfiguration() {
+        return httpClient;
+    }
+
+    @JsonProperty("httpClient")
+    public void setHttpClientConfiguration(HttpClientConfiguration httpClient) {
+        this.httpClient = httpClient;
     }
 }

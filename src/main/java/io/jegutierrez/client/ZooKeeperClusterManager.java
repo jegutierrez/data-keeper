@@ -1,7 +1,17 @@
 package io.jegutierrez.client;
 
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.util.EntityUtils;
 import org.apache.zookeeper.AsyncCallback.ChildrenCallback;
 import org.apache.zookeeper.AsyncCallback.StatCallback;
 import org.apache.zookeeper.AsyncCallback.StringCallback;
@@ -17,23 +27,32 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.jegutierrez.core.DataKeeperClusterInfo;
+import io.jegutierrez.db.DatabaseRepository;
 
-public class ZooKeeperClusterMonitor {
+public class ZooKeeperClusterManager {
     public final String CLUSTER = "cluster";
     public final String NODES = "nodes";
     public final String LIVE_NODES = "live-nodes";
     public final String LEADER = "leader";
     public final String ELECTED = "elected";
 
-    private static final Logger log = LoggerFactory.getLogger(ZooKeeperClusterMonitor.class);
+    private static final Logger log = LoggerFactory.getLogger(ZooKeeperClusterManager.class);
     boolean connected;
     ZooKeeper zk;
     DataKeeperClusterInfo clusterInfo;
+    DatabaseRepository kvs;
+    HttpClient httpClient;
+    ObjectMapper jsonMapper;
 
-    ZooKeeperClusterMonitor(ZooKeeper zk, DataKeeperClusterInfo clusterInfo) {
+    ZooKeeperClusterManager(ZooKeeper zk, DataKeeperClusterInfo clusterInfo, DatabaseRepository kvs,
+            HttpClient httpClient) {
         this.zk = zk;
         this.connected = true;
         this.clusterInfo = clusterInfo;
+        this.kvs = kvs;
+        this.httpClient = httpClient;
+        this.jsonMapper = new ObjectMapper();
+
         createClusterNodes();
         getClusterNodes(0);
         zk.exists(String.format("/%s/%s/%s", CLUSTER, LIVE_NODES, clusterInfo.getNodeName()),
@@ -96,8 +115,11 @@ public class ZooKeeperClusterMonitor {
                                 byte[] leaderData = zk.getData(path + "/" + children.get(0), false, null);
                                 clusterInfo.setLeader(new String(leaderData));
                                 log.info("Leader elected, node: " + new String(leaderData));
-                            } catch (KeeperException | InterruptedException e) {
-                                log.error("error getting cluster leader stats", KeeperException.create(Code.get(rc), path));
+                                syncWithLeader(retryCount);
+
+                            } catch (KeeperException | InterruptedException | IOException e) {
+                                log.error("error getting cluster leader stats",
+                                        KeeperException.create(Code.get(rc), path));
                             }
                         } else {
                             log.info("No leader elected, taking leadership");
@@ -108,10 +130,10 @@ public class ZooKeeperClusterMonitor {
                         log.error("error getting cluster leader stats");
                         log.info("retrying to get cluster leader stats...");
                         getLeader(retryCount + 1);
-            
+
                         break;
                     default:
-                        log.error("getChildren failed",KeeperException.create(Code.get(rc), path));
+                        log.error("getChildren failed", KeeperException.create(Code.get(rc), path));
                 }
             }
         };
@@ -120,45 +142,58 @@ public class ZooKeeperClusterMonitor {
     StringCallback takeLeadershipCallback = new StringCallback() {
         public void processResult(int rc, String path, Object ctx, String name) {
             int retryCount = ctx == null ? 0 : (int) ctx;
-            if (retryCount > 5) { 
+            if (retryCount > 5) {
                 log.error("Max retries reached" + path);
             }
             switch (Code.get(rc)) {
-            case CONNECTIONLOSS:
-                takeLeadership(retryCount + 1);
-                break;
-            case OK:
-                log.info("leader elected");
-                getLeader(0);
-                break;
-            case NODEEXISTS:
-                log.warn("leader exists");
-                getLeader(0);
-                break;
-            default:
-                log.error("Something went wrong: " + KeeperException.create(Code.get(rc), path));
+                case CONNECTIONLOSS:
+                    takeLeadership(retryCount + 1);
+                    break;
+                case OK:
+                    log.info("leader elected");
+                    getLeader(0);
+                    break;
+                case NODEEXISTS:
+                    log.warn("leader exists");
+                    getLeader(0);
+                    break;
+                default:
+                    log.error("Something went wrong: " + KeeperException.create(Code.get(rc), path));
             }
         }
     };
 
-    private void getClusterNodes(int retryCount) {
-        zk.exists(
-            String.format("/%s/%s/%s", CLUSTER, NODES, clusterInfo.getNodeName()), 
-            getNodeRegistrationWatcher(),
-            getNodeRegistrationCallback(zk), 
-            retryCount
-        );
+    private void syncWithLeader(int retryCount) throws ClientProtocolException, IOException {    
+        if(clusterInfo.imILeader()) {
+            return;
+        }
+        String url = String.format("http://%s:%d/data/sync", clusterInfo.getLeaderAddress(), clusterInfo.getLeaderPort());
+        log.info("**** sync data request started " +url);
+        HttpGet request = new HttpGet(url);
+        HttpResponse response;
+        response = httpClient.execute(request);
+
+        int statusCode = response.getStatusLine().getStatusCode();
+        if (statusCode != HttpStatus.SC_OK) {
+            // retry
+            getLeader(retryCount + 1);
+            log.error("error getting data from leader");
+        }
+        String data = EntityUtils.toString(response.getEntity());
+        HashMap<String, String> result = jsonMapper.readValue(data, HashMap.class);
+        log.info("sync data request done " +data);
+        kvs.syncData(result);
     }
 
-    private void joinCluster(int retryCount){
-        zk.create(
-            String.format("/%s/%s/%S", CLUSTER, NODES, clusterInfo.getNodeName()), 
-            clusterInfo.getNodeName().getBytes(), 
-            Ids.OPEN_ACL_UNSAFE, 
-            CreateMode.EPHEMERAL,
-            takeLeadershipCallback,
-            retryCount
-        );
+    private void getClusterNodes(int retryCount) {
+        zk.exists(String.format("/%s/%s/%s", CLUSTER, NODES, clusterInfo.getNodeName()), getNodeRegistrationWatcher(),
+                getNodeRegistrationCallback(zk), retryCount);
+    }
+
+    private void joinCluster(int retryCount) {
+        zk.create(String.format("/%s/%s/%S", CLUSTER, NODES, clusterInfo.getNodeName()),
+                clusterInfo.getNodeName().getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL, takeLeadershipCallback,
+                retryCount);
     }
 
     private Watcher getNodeRegistrationWatcher() {
@@ -181,37 +216,38 @@ public class ZooKeeperClusterMonitor {
     }
 
     // private StringCallback getLeaderCreationCallback(ZooKeeper zk) {
-    //     return new StringCallback() {
-    //         @Override
-    //         public void processResult(int rc, String path, Object ctx, String name) {
-    //             int count = ctx == null ? 0 : (int) ctx;
-    //             switch (Code.get(rc)) {
-    //                 case CONNECTIONLOSS:
-    //                     if (count <= 5) {
-    //                         zk.create(path, clusterInfo.getNodeName().getBytes(), Ids.OPEN_ACL_UNSAFE,
-    //                                 CreateMode.EPHEMERAL, getLeaderCreationCallback(zk), count + 1);
-    //                     } else {
-    //                         log.info("Max creation retries to create node " + path);
-    //                     }
-    //                     break;
-    //                 case OK:
-    //                     log.info(path + " created");
-    //                     zk.exists(path, getLeaderWatcher(), getLeaderRegisterCallback(zk), null);
-    //                     break;
-    //                 case NONODE:
-    //                     log.info("NONODE, trying to create node " + path);
-    //                     if (count <= 5) {
-    //                         zk.create(path, clusterInfo.getNodeName().getBytes(), Ids.OPEN_ACL_UNSAFE,
-    //                                 CreateMode.EPHEMERAL, getLeaderCreationCallback(zk), count + 1);
-    //                     } else {
-    //                         log.info("Max creation retries to create node " + path);
-    //                     }
-    //                     break;
-    //                 default:
-    //                     log.error("Something went wrong" + KeeperException.create(Code.get(rc), path));
-    //             }
-    //         }
-    //     };
+    // return new StringCallback() {
+    // @Override
+    // public void processResult(int rc, String path, Object ctx, String name) {
+    // int count = ctx == null ? 0 : (int) ctx;
+    // switch (Code.get(rc)) {
+    // case CONNECTIONLOSS:
+    // if (count <= 5) {
+    // zk.create(path, clusterInfo.getNodeName().getBytes(), Ids.OPEN_ACL_UNSAFE,
+    // CreateMode.EPHEMERAL, getLeaderCreationCallback(zk), count + 1);
+    // } else {
+    // log.info("Max creation retries to create node " + path);
+    // }
+    // break;
+    // case OK:
+    // log.info(path + " created");
+    // zk.exists(path, getLeaderWatcher(), getLeaderRegisterCallback(zk), null);
+    // break;
+    // case NONODE:
+    // log.info("NONODE, trying to create node " + path);
+    // if (count <= 5) {
+    // zk.create(path, clusterInfo.getNodeName().getBytes(), Ids.OPEN_ACL_UNSAFE,
+    // CreateMode.EPHEMERAL, getLeaderCreationCallback(zk), count + 1);
+    // } else {
+    // log.info("Max creation retries to create node " + path);
+    // }
+    // break;
+    // default:
+    // log.error("Something went wrong" + KeeperException.create(Code.get(rc),
+    // path));
+    // }
+    // }
+    // };
     // }
 
     private StringCallback getGenericCreationCallback(ZooKeeper zk) {

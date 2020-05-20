@@ -1,6 +1,8 @@
 package io.jegutierrez.resources;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.validation.Valid;
 import javax.validation.constraints.NotNull;
@@ -44,18 +46,27 @@ public class DatabaseResource {
     @GET
     @Timed
     @Path("/{key}")
-    public byte[] getData(@PathParam("key") String key) {
-        final byte[] value = kvs.get(key);
-        if(value == null) {
+    public Map<String, String> getData(@PathParam("key") String key) {
+        if(kvs.get(key) != null) {
             throw new WebApplicationException("key not found", Status.NOT_FOUND);
         }
+        Map<String, String> value = new HashMap<>();
+        value.put(key, new String(kvs.get(key)));
         return value;
+    }
+
+    @GET
+    @Timed
+    @Path("/sync")
+    public Map<String, String> getData() {
+        log.info("sync data request");
+        return kvs.getDataToSync();
     }
 
     @PUT
     @Timed
     @Path("/{key}")
-    public Response putData(@PathParam("key") String key, @NotNull @Valid byte[] value) throws IOException {
+    public Response putData(@PathParam("key") String key, @NotNull @Valid String value) throws IOException {
         try {
             objectMapper.readTree(value);
         } catch (JsonProcessingException e) {

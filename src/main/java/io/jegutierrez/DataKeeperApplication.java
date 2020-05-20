@@ -9,12 +9,12 @@ import io.jegutierrez.core.DataKeeperClusterInfo;
 import io.jegutierrez.db.DatabaseRepository;
 
 import io.dropwizard.Application;
+import io.dropwizard.client.HttpClientBuilder;
 import io.dropwizard.configuration.ConfigurationSourceProvider;
 import io.dropwizard.configuration.EnvironmentVariableSubstitutor;
 import io.dropwizard.configuration.SubstitutingSourceProvider;
 import io.dropwizard.jetty.HttpConnectorFactory;
 import io.dropwizard.server.DefaultServerFactory;
-import io.dropwizard.server.SimpleServerFactory;
 import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
 
@@ -22,6 +22,9 @@ import java.io.IOException;
 import java.security.Security;
 import java.util.concurrent.CountDownLatch;
 
+import com.google.common.base.MoreObjects;
+
+import org.apache.http.client.HttpClient;
 import org.apache.zookeeper.ZooKeeper;
 import org.conscrypt.OpenSSLProvider;
 
@@ -31,6 +34,8 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
     }
     private static DataKeeperClusterInfo clusterInfo;
     private static ZooKeeper zk;
+    private static DatabaseRepository kvs;
+    private static HttpClient httpClient;
     final static CountDownLatch appStarted = new CountDownLatch(1);
 
     public static void main(final String[] args) throws Exception {
@@ -38,7 +43,7 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
 
         appStarted.await();
 
-        new ZooKeeperClusterExecutor(zk, clusterInfo).run();
+        new ZooKeeperClusterExecutor(zk, clusterInfo, kvs, httpClient).run();
     }
 
     @Override
@@ -61,7 +66,7 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
         final HttpConnectorFactory applicationConnector = ((HttpConnectorFactory)
                 ((DefaultServerFactory) appConfig.getServerFactory()).getApplicationConnectors().get(0));
 
-        String host = applicationConnector.getBindHost();
+        String host = MoreObjects.firstNonNull(applicationConnector.getBindHost(), "127.0.0.1");
         int port = applicationConnector.getPort();
 
         clusterInfo = new DataKeeperClusterInfo(
@@ -76,8 +81,10 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
             appConfig.getZooKeeperPort(), 
             appConfig.getZooKeeperTimeout()
         );
-
-        final DatabaseRepository kvs = new DatabaseRepository();
+        kvs = new DatabaseRepository();
+        httpClient = new HttpClientBuilder(environment).using(appConfig.getHttpClientConfiguration())
+                                                                    .build(getName());
+        
         final DatabaseResource dbResource = new DatabaseResource(kvs);
         final ClusterResource clusterResource = new ClusterResource(zk, clusterInfo);
         final NodeResource nodeResource = new NodeResource();
