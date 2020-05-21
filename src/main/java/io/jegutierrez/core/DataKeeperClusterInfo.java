@@ -3,6 +3,7 @@ package io.jegutierrez.core;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class DataKeeperClusterInfo {
     private final String nodeName;
@@ -11,7 +12,7 @@ public class DataKeeperClusterInfo {
     private final String zooKeeperAddress;
     private final int zooKeeperPort;
 
-    private List<String> liveNodes;
+    private List<ClusterNode> liveNodes;
     private String leaderHostName;
     private String leaderAddress;
     private int leaderPort;
@@ -81,12 +82,19 @@ public class DataKeeperClusterInfo {
         return zooKeeperPort;
     }
 
-    public List<String> getLiveNodes() {
+    public List<ClusterNode> getLiveNodes() {
         return liveNodes;
     }
 
-    public void setLiveNodes(List<String> liveNodes) {
+    public void setLiveNodes(List<ClusterNode> liveNodes) {
         this.liveNodes = liveNodes;
     }
 
+    public List<Map<String, String>> getLiveNodesMapData() {
+        return this.liveNodes.stream().map(node -> Map.of(
+            "host-name", node.getHostName(),
+            "address", node.getAddress(),
+            "port", ""+node.getPort()
+        )).collect(Collectors.toList());
+    }
 }

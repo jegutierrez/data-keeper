@@ -85,6 +85,8 @@ public class DatabaseResource {
         }
         if (clusterInfo.imILeader()) {
             kvs.put(key, value);
+            // TODO: broadcast writes to live replicas
+            // clusterInfo.getLiveNodes();
         } else {
             // redirect write to the leader node.
             String url = String.format("http://%s:%d/data/%s", clusterInfo.getLeaderAddress(),

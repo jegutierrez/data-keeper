@@ -26,12 +26,10 @@ import io.jegutierrez.core.DataKeeperClusterInfo;
 @Produces(MediaType.APPLICATION_JSON)
 public class ClusterResource {
     private static final Logger log = LoggerFactory.getLogger(ClusterResource.class);
-    private ZooKeeper zk;
     private DataKeeperClusterInfo clusterInfo;
 
-    public ClusterResource(ZooKeeper zk, DataKeeperClusterInfo clusterInfo) {
-        assert zk != null;
-        this.zk = zk;
+    public ClusterResource(DataKeeperClusterInfo clusterInfo) {
+        assert clusterInfo != null;
         this.clusterInfo = clusterInfo;
     }
 
@@ -39,28 +37,7 @@ public class ClusterResource {
     @Timed
     @Path("/status")
     public Response getClusterInfo() {
-        log.debug("checking cluster info");
-        Map<String, List<Map<String, String>>> status = new HashMap<>();
-        try {
-            List<String> nodes = new ArrayList<>();
-            List<String> liveNodes = new ArrayList<>();
-            if(zk.exists("/cluster/nodes", true) != null) {
-                nodes = zk.getChildren("/cluster/nodes", false);
-            }
-            if(zk.exists("/cluster/live-nodes", true) != null) {
-                liveNodes = zk.getChildren("/cluster/live-nodes", false);
-            }
-            List<Map<String, String>> nodesStatus = new ArrayList<>();
-            for(String n: nodes) {
-                boolean live = liveNodes.contains(n);
-                nodesStatus.add(Map.of(n, live ? "live" : "down"));
-            }
-            status = Map.of("cluster-status", nodesStatus);
-        } catch (KeeperException | InterruptedException e) {
-            log.error("could not get live nodes ", e.getMessage());
-            throw new WebApplicationException("could not get live nodes", Status.INTERNAL_SERVER_ERROR); 
-        }
-        return Response.status(Status.OK).entity(status).build();
+        return Response.status(Status.OK).entity(clusterInfo.getLiveNodesMapData()).build();
     }
 
     @GET
