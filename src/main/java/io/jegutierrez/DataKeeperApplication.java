@@ -85,7 +85,7 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
         httpClient = new HttpClientBuilder(environment).using(appConfig.getHttpClientConfiguration())
                                                                     .build(getName());
         
-        final DatabaseResource dbResource = new DatabaseResource(kvs);
+        final DatabaseResource dbResource = new DatabaseResource(kvs, clusterInfo, httpClient);
         final ClusterResource clusterResource = new ClusterResource(zk, clusterInfo);
         final NodeResource nodeResource = new NodeResource();
 
