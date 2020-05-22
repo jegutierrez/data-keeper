@@ -31,6 +31,7 @@ import org.apache.http.entity.StringEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.jegutierrez.core.ClusterNode;
 import io.jegutierrez.core.DataKeeperClusterInfo;
 import io.jegutierrez.db.DatabaseRepository;
 
@@ -57,7 +58,7 @@ public class DatabaseResource {
     @Timed
     @Path("/{key}")
     public Map<String, String> getData(@PathParam("key") String key) {
-        if (kvs.get(key) != null) {
+        if (kvs.get(key) == null) {
             throw new WebApplicationException("key not found", Status.NOT_FOUND);
         }
         Map<String, String> value = new HashMap<>();
@@ -69,7 +70,6 @@ public class DatabaseResource {
     @Timed
     @Path("/sync")
     public Map<String, String> getData() {
-        log.info("sync data request");
         return kvs.getDataToSync();
     }
 
@@ -85,8 +85,24 @@ public class DatabaseResource {
         }
         if (clusterInfo.imILeader()) {
             kvs.put(key, value);
-            // TODO: broadcast writes to live replicas
-            // clusterInfo.getLiveNodes();
+            // broadcast writes to live replicas
+            for (ClusterNode node : clusterInfo.getLiveNodes()) {
+                if(node.getHostName().equals(clusterInfo.getNodeName())) {
+                    continue;
+                }
+                String url = String.format("http://%s:%d/data/sync/%s", node.getAddress(), node.getPort(), key);
+                HttpPut request = new HttpPut(url);
+                request.setEntity(new StringEntity(value));
+                request.addHeader("content-type", "application/json");
+                HttpResponse response = httpClient.execute(request);
+
+                int statusCode = response.getStatusLine().getStatusCode();
+                if (statusCode != HttpStatus.SC_CREATED) {
+                    log.error("error replicating write request to node " + node.getHostName() + " "
+                            + response.getStatusLine().getReasonPhrase());
+                }
+            }
+            log.info("data writren successfuly");
         } else {
             // redirect write to the leader node.
             String url = String.format("http://%s:%d/data/%s", clusterInfo.getLeaderAddress(),
@@ -97,12 +113,21 @@ public class DatabaseResource {
             HttpResponse response = httpClient.execute(request);
 
             int statusCode = response.getStatusLine().getStatusCode();
-            if (statusCode != HttpStatus.SC_OK) {
+            if (statusCode != HttpStatus.SC_CREATED) {
                 log.error("error redirecting write request to the leader " + statusCode + " "
                         + response.getStatusLine().getReasonPhrase());
+                throw new WebApplicationException("could not redirect write to master");
             }
             log.info("data writren successfuly");
         }
+        return Response.created(UriBuilder.fromResource(DatabaseResource.class).build(value)).build();
+    }
+
+    @PUT
+    @Timed
+    @Path("/sync/{key}")
+    public Response dataSync(@PathParam("key") String key, @NotNull @Valid String value) {
+        kvs.put(key, value);
         return Response.created(UriBuilder.fromResource(DatabaseResource.class).build(value)).build();
     }
 }
