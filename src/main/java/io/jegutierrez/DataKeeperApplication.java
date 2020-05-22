@@ -2,7 +2,6 @@ package io.jegutierrez;
 
 import io.jegutierrez.resources.ClusterResource;
 import io.jegutierrez.resources.DatabaseResource;
-import io.jegutierrez.resources.NodeResource;
 import io.jegutierrez.client.ZooKeeperClusterExecutor;
 import io.jegutierrez.client.ZooKeeperConnection;
 import io.jegutierrez.core.DataKeeperClusterInfo;
@@ -87,11 +86,9 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
         
         final DatabaseResource dbResource = new DatabaseResource(kvs, clusterInfo, httpClient);
         final ClusterResource clusterResource = new ClusterResource(clusterInfo);
-        final NodeResource nodeResource = new NodeResource();
 
         environment.jersey().register(dbResource);
         environment.jersey().register(clusterResource);
-        environment.jersey().register(nodeResource);
         appStarted.countDown();
     }
 

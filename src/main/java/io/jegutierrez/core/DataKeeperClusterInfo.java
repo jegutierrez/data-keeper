@@ -94,7 +94,8 @@ public class DataKeeperClusterInfo {
         return this.liveNodes.stream().map(node -> Map.of(
             "host-name", node.getHostName(),
             "address", node.getAddress(),
-            "port", ""+node.getPort()
+            "port", ""+node.getPort(),
+            "leader", ""+node.getHostName().equals(leaderHostName)
         )).collect(Collectors.toList());
     }
 }

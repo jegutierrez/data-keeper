@@ -1,8 +1,11 @@
 package io.jegutierrez.resources;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.validation.Valid;
 import javax.validation.constraints.NotNull;
@@ -25,6 +28,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
+import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.entity.StringEntity;
@@ -44,6 +48,7 @@ public class DatabaseResource {
     private ObjectMapper objectMapper;
     private DataKeeperClusterInfo clusterInfo;
     private HttpClient httpClient;
+    private ExecutorService executor;
 
     public DatabaseResource(DatabaseRepository kvs, DataKeeperClusterInfo clusterInfo, HttpClient httpClient) {
         this.kvs = kvs;
@@ -52,18 +57,17 @@ public class DatabaseResource {
         this.objectMapper = new ObjectMapper();
         this.objectMapper.enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.objectMapper.enable(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY);
+        executor = Executors.newFixedThreadPool(5);
     }
 
     @GET
     @Timed
     @Path("/{key}")
-    public Map<String, String> getData(@PathParam("key") String key) {
+    public Response getData(@PathParam("key") String key) {
         if (kvs.get(key) == null) {
             throw new WebApplicationException("key not found", Status.NOT_FOUND);
         }
-        Map<String, String> value = new HashMap<>();
-        value.put(key, new String(kvs.get(key)));
-        return value;
+        return Response.status(Response.Status.OK).entity(kvs.get(key)).type(MediaType.APPLICATION_JSON).build();
     }
 
     @GET
@@ -85,42 +89,55 @@ public class DatabaseResource {
         }
         if (clusterInfo.imILeader()) {
             kvs.put(key, value);
-            // broadcast writes to live replicas
-            for (ClusterNode node : clusterInfo.getLiveNodes()) {
-                if(node.getHostName().equals(clusterInfo.getNodeName())) {
-                    continue;
-                }
-                String url = String.format("http://%s:%d/data/sync/%s", node.getAddress(), node.getPort(), key);
-                HttpPut request = new HttpPut(url);
-                request.setEntity(new StringEntity(value));
-                request.addHeader("content-type", "application/json");
-                HttpResponse response = httpClient.execute(request);
-
-                int statusCode = response.getStatusLine().getStatusCode();
-                if (statusCode != HttpStatus.SC_CREATED) {
-                    log.error("error replicating write request to node " + node.getHostName() + " "
-                            + response.getStatusLine().getReasonPhrase());
-                }
-            }
-            log.info("data writren successfuly");
+            broadCastWriteToReplicas(key, value);
+            log.info("data replicated successfully");
         } else {
-            // redirect write to the leader node.
-            String url = String.format("http://%s:%d/data/%s", clusterInfo.getLeaderAddress(),
-                    clusterInfo.getLeaderPort(), key);
-            HttpPut request = new HttpPut(url);
-            request.setEntity(new StringEntity(value));
-            request.addHeader("content-type", "application/json");
-            HttpResponse response = httpClient.execute(request);
-
-            int statusCode = response.getStatusLine().getStatusCode();
-            if (statusCode != HttpStatus.SC_CREATED) {
-                log.error("error redirecting write request to the leader " + statusCode + " "
-                        + response.getStatusLine().getReasonPhrase());
-                throw new WebApplicationException("could not redirect write to master");
-            }
-            log.info("data writren successfuly");
+            redirectWriteToMaster(key, value);
+            log.info("data written successfully");
         }
         return Response.created(UriBuilder.fromResource(DatabaseResource.class).build(value)).build();
+    }
+
+    private void redirectWriteToMaster(String key, String value) throws ClientProtocolException, IOException {
+        String url = String.format("http://%s:%d/data/%s", clusterInfo.getLeaderAddress(), clusterInfo.getLeaderPort(),
+                key);
+        HttpPut request = new HttpPut(url);
+        request.setEntity(new StringEntity(value));
+        request.addHeader("content-type", "application/json");
+        HttpResponse response = httpClient.execute(request);
+
+        int statusCode = response.getStatusLine().getStatusCode();
+        if (statusCode != HttpStatus.SC_CREATED) {
+            log.error("error redirecting write request to the leader " + statusCode + " "
+                    + response.getStatusLine().getReasonPhrase());
+            throw new WebApplicationException("could not redirect write to master");
+        }
+    }
+
+    private void broadCastWriteToReplicas(String key, String value) throws ClientProtocolException, IOException {
+        // broadcast writes to live replicas
+        for (ClusterNode node : clusterInfo.getLiveNodes()) {
+            if (node.getHostName().equals(clusterInfo.getNodeName())) {
+                continue;
+            }
+            executor.submit(() -> {
+                try {
+                    String url = String.format("http://%s:%d/data/sync/%s", node.getAddress(), node.getPort(), key);
+                    HttpPut request = new HttpPut(url);
+                    request.setEntity(new StringEntity(value));
+                    request.addHeader("content-type", "application/json");
+                    HttpResponse response = httpClient.execute(request);
+
+                    int statusCode = response.getStatusLine().getStatusCode();
+                    if (statusCode != HttpStatus.SC_CREATED) {
+                        log.error("error replicating write request to node " + node.getHostName() + " "
+                                + response.getStatusLine().getReasonPhrase());
+                    }
+                } catch (IOException e) {
+                    log.error("error replicating write request " + e.getMessage());
+                }
+            });
+        }
     }
 
     @PUT

@@ -15,8 +15,6 @@ import javax.ws.rs.core.MediaType;
 
 import com.codahale.metrics.annotation.Timed;
 
-import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

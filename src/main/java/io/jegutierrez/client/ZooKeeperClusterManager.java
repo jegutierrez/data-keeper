@@ -14,7 +14,6 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.util.EntityUtils;
 import org.apache.zookeeper.AsyncCallback.ChildrenCallback;
-import org.apache.zookeeper.AsyncCallback.StatCallback;
 import org.apache.zookeeper.AsyncCallback.StringCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -23,7 +22,6 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
-import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -164,7 +162,7 @@ public class ZooKeeperClusterManager {
             return;
         }
         String url = String.format("http://%s:%d/data/sync", clusterInfo.getLeaderAddress(), clusterInfo.getLeaderPort());
-        log.info("**** sync data request started " +url);
+        log.info("sync data request started " +url);
         HttpGet request = new HttpGet(url);
         HttpResponse response;
         response = httpClient.execute(request);
@@ -177,7 +175,7 @@ public class ZooKeeperClusterManager {
         }
         String data = EntityUtils.toString(response.getEntity());
         HashMap<String, String> result = jsonMapper.readValue(data, HashMap.class);
-        log.info("sync data request done " +data);
+        log.info("sync data request completed " +data);
         kvs.syncData(result);
     }
 
