@@ -2,7 +2,7 @@ package io.jegutierrez;
 
 import io.jegutierrez.resources.ClusterResource;
 import io.jegutierrez.resources.DatabaseResource;
-import io.jegutierrez.client.ZooKeeperClusterExecutor;
+import io.jegutierrez.client.ZooKeeperClusterManager;
 import io.jegutierrez.client.ZooKeeperConnection;
 import io.jegutierrez.core.DataKeeperClusterInfo;
 import io.jegutierrez.db.DatabaseRepository;
@@ -42,7 +42,7 @@ public class DataKeeperApplication extends Application<DataKeeperConfiguration> 
 
         appStarted.await();
 
-        new ZooKeeperClusterExecutor(zk, clusterInfo, kvs, httpClient).run();
+        new ZooKeeperClusterManager(zk, clusterInfo, kvs, httpClient).run();
     }
 
     @Override

@@ -1,8 +1,6 @@
 package io.jegutierrez.resources;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;

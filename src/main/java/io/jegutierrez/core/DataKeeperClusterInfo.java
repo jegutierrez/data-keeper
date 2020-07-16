@@ -91,7 +91,7 @@ public class DataKeeperClusterInfo {
     }
 
     public List<Map<String, String>> getLiveNodesMapData() {
-        return this.liveNodes.stream().map(node -> Map.of(
+        return this.liveNodes.stream().map((ClusterNode node) -> Map.of(
             "host-name", node.getHostName(),
             "address", node.getAddress(),
             "port", ""+node.getPort(),
