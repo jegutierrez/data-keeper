@@ -18,8 +18,9 @@ DataKeeper was built with learning purposes, its not intended to be used in prod
 - Every DataKeeper node will mantain an in memory copy of the cluster status.
 
 
-#### Features
+#### Architecture
 
+![data-keeper](data-keeper.png)
 
 #### Pre-requisites to run DataKeeper:
 - Java 8+
