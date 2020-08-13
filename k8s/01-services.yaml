@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+    name: zookeper-s
+    namespace: zookeper
+spec:
+  selector:
+    app: zookeeper-d
+  ports:
+    - protocol: TCP
+      port: 2181
+      targetPort: 2181
+    - protocol: TCP
+      port: 2888
+      targetPort: 2888
+    - protocol: TCP
+      port: 3888
+      targetPort: 3888
+    - protocol: TCP
+      port: 8087
+      targetPort: 8080
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+    name: datakeper-s
+    namespace: datakeper
+spec:
+  selector:
+    app: datakeeper-d
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081

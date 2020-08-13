@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datakeeper-d
+  namespace: datakeeper
+  labels:
+    app: datakeeper-d
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: datakeeper-d
+  template:
+    metadata:
+      app: datakeeper-d
+  spec:
+      containers:
+        - name: localhost:5000/datakeeper
+          image: datakeeper
+          ports:
+            - containerPort: 8080
+            - containerPort: 8081
